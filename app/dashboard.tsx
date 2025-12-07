@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native'
+import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native'
 import LinearGradient from 'react-native-linear-gradient';
 import { collection, query, orderBy, limit, onSnapshot } from "firebase/firestore";
 import { db } from './firebase/config';
+
+import RenderForecast from './components/forecast';
+import GridItem from './components/gridItem';
 
 interface WeatherData {
   humidity?: number;
@@ -28,32 +31,46 @@ interface WeatherData {
   };
 }
 
-const RenderForecast = ({ Value, status }: { Value?: string | number; status: string }) => {
+interface DatabaseRecord {
+  id: string;
+  title?: string;
+  timestamp?: {
+    seconds: number;
+  };
+}
 
-  let icon = <Text style={{ fontSize: 35, paddingBottom: 20 }}>🌤️</Text>
+function formatToUTC8(ts: any) {
 
-  if(status == "moderate") {
-    icon = <Text style={{ fontSize: 35, paddingBottom: 20 }}>🌦️</Text>
-  }else if(status == "heavy"){
-    icon = <Text style={{ fontSize: 35, paddingBottom: 20 }}>🌧️☔</Text>
-  }
+  if (!ts) return '';
 
-  return (
-    <View style={{ marginTop: 20, marginBottom: 20 }}>
-      <Text style={styles.temp}>{Value ?? '--'}°</Text>
-      <Text style={gridStyles.label}>Temperature</Text>
-      <View style={{ height: 15 }}></View>
-      <Text style={styles.condition}> {icon} {status ?? 'Loading...'}</Text>
-      <Text style={gridStyles.label}>Rain Forecast</Text>
-    </View>
-  )
+  // Step 1: convert Firestore timestamp to JS Date
+  const date = new Date(ts.seconds * 1000);
+
+  // Step 2: convert to UTC+8
+  const utc = date.getTime() + date.getTimezoneOffset() * 60000;
+  const utc8 = new Date(utc + 8 * 60 * 60 * 1000);
+
+  console.log(date, utc, utc8)
+
+  // Step 3: convert to readable string
+  return utc8.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 export default function DashboardScreen() {
 
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [records, setRecords] = useState<DatabaseRecord[]>([]);
+  const [loadingRecords, setLoadingRecords] = useState(false);
   const timestamp = new Date().toLocaleString();
+  const [showJson, setShowJson] = useState(false);
 
   useEffect(() => {
     // Firestore query: get latest weather record
@@ -68,11 +85,12 @@ export default function DashboardScreen() {
       if (!snapshot.empty) {
         setWeather(snapshot.docs[0].data() as WeatherData);
         console.log(snapshot.docs[0].data());
-        console.log('Timestamp:', weather?.timestamp);
+
       } else {
         console.log("No weather records found");
       }
       setLoading(false);
+      console.log('Timestamp:', weather?.timestamp);
     });
 
     // Cleanup listener on unmount
@@ -92,60 +110,86 @@ export default function DashboardScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <Text style={styles.header}>Sual NHS</Text>
         <Text style={styles.date}>
-          Data Source: {weather?.timestamp
-            ? new Date(weather.timestamp.seconds * 1000).toLocaleString('en-US', {
-              year: 'numeric',
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: true,
-            })
-            : ''}
+          Data Source: {weather?.timestamp ? formatToUTC8(weather.timestamp) : ''}
         </Text>
-
 
         <View style={styles.mainCard}>
           <Text style={styles.city}>Weather Monitoring</Text>
 
           <RenderForecast
-            Value={weather?.temperature_celsius ?? ''}
+            tempCel={weather?.temperature_celsius ?? ''}
             status={weather?.rain_status ?? ''}
           />
 
-          <View style={gridStyles.container}>
-            <View style={[gridStyles.cell, { backgroundColor: '#fff' }]}>
-              <Text style={gridStyles.icon}>🌡️</Text>
-              <Text style={gridStyles.value}>{weather?.heat_index ?? '--'}°</Text>
-              <Text style={gridStyles.label}>Heat Index</Text>
-            </View>
-            <View style={[gridStyles.cell, { backgroundColor: '#fff' }]}>
-              <Text style={gridStyles.icon}>🧭</Text>
-              <Text style={gridStyles.value}>{weather?.pressure_hpa ?? '--'}</Text>
-              <Text style={gridStyles.label}>Pressure</Text>
-            </View>
-            <View style={[gridStyles.cell, { backgroundColor: '#fff' }]}>
-              <Text style={gridStyles.icon}>🏔️</Text>
-              <Text style={gridStyles.value}>{weather?.altitude_meters ?? '--'} m</Text>
-              <Text style={gridStyles.label}>Altitude</Text>
-            </View>
-
-            <View style={[gridStyles.cell, { backgroundColor: '#fff' }]}>
-              <Text style={gridStyles.icon}>💧</Text>
-              <Text style={gridStyles.value}>{weather?.humidity ?? '--'}%</Text>
-              <Text style={gridStyles.label}>Humidity</Text>
-            </View>
-            <View style={[gridStyles.cell, { backgroundColor: '#fff' }]}>
-              <Text style={gridStyles.icon}>💨</Text>
-              <Text style={gridStyles.value}>{weather?.wind_speed_kmh ?? '--'} km/h</Text>
-              <Text style={gridStyles.label}>Wind</Text>
-            </View>
-            <View style={[gridStyles.cell, { backgroundColor: '#fff' }]}>
-              <Text style={gridStyles.icon}>🌧️</Text>
-              <Text style={gridStyles.value}>{weather?.rain_voltage ?? '--'}%</Text>
-              <Text style={gridStyles.label}>Rain</Text>
-            </View>
+          <View style={gridStyles.container}>            
+            <GridItem
+              icon="🌡️"
+              value={weather?.heat_index ?? '--'}
+              units={[]}
+              defaultUnit='°'
+              label="Heat Index"
+            /> 
+            <GridItem
+              icon="🧭"
+              value={weather?.pressure_hpa ?? '--'}
+              units={[]}
+              defaultUnit=''
+              label="Pressure"
+            />           
+            <GridItem
+              icon="🏔️"
+              value={weather?.altitude_meters ?? '--'}
+              units={[]}
+              defaultUnit=' m'
+              label="Altitude"
+            />
           </View>
+
+          <View style={gridStyles.container}>
+            <GridItem
+              icon="💧"
+              value={weather?.humidity ?? '--'}
+              units={[]}
+              defaultUnit='%'
+              label="Humidity"
+            />
+            <GridItem
+              icon="💨"
+              value={typeof weather?.wind_speed_kmh === 'number' ? weather.wind_speed_kmh : 0}
+              units={['km/h', 'mph', 'm/s']}
+              defaultUnit='km/h'
+              label="Wind"
+            />
+            <GridItem
+              icon="🌧️"
+              value={weather?.rain_voltage ?? '--'}
+              units={[]}
+              defaultUnit="%"
+              label="Rain"
+            />
+          </View>
+
+        </View>
+
+        {/* ------------------- JSON Dropdown Section ------------------- */}
+        <View style={styles.jsonDropdownContainer}>
+          <TouchableOpacity
+            onPress={() => setShowJson(prev => !prev)}
+            style={styles.toggleButton}
+          >
+            <Text style={styles.toggleButtonText}>
+              {showJson ? 'hide' : 'more info'}
+            </Text>
+          </TouchableOpacity>
+
+          {showJson && (
+            <View style={styles.jsonSection}>
+              <Text style={styles.jsonText}>
+                {weather ? JSON.stringify(weather, null, 2) : 'No data available'}
+              </Text>
+            </View>
+          )}
+          <View style={{ height: 100 }}></View>
 
         </View>
 
@@ -213,22 +257,26 @@ const styles = StyleSheet.create({
     height: 120,
     marginVertical: 10
   },
-  statsRow: {
-    flex: 1,
-    flexDirection: 'row',
-    marginTop: 10
+  jsonDropdownContainer: { marginHorizontal: 20, marginBottom: 30 },
+  toggleButton: {
+    backgroundColor: '#4f6ef7',
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 8,
   },
-  statBox: {
-    flex: 1,
+  toggleButtonText: { color: '#fff', fontWeight: 'bold', textAlign: 'center' },
+
+  jsonSection: {
+    marginTop: 10,
+    padding: 15,
+    borderRadius: 12,
+    backgroundColor: '#f0f4ff',
   },
-  statIcon: {
-    fontSize: 30
+  jsonText: {
+    fontFamily: 'Courier', // monospaced for readability
+    fontSize: 12,
+    color: '#333',
   },
-  statText: {
-    ...textStyle.regular,
-    fontSize: 22,
-    fontWeight: '600'
-  }
 });
 
 const gridStyles = StyleSheet.create({
@@ -241,14 +289,15 @@ const gridStyles = StyleSheet.create({
     width: '33.33%', // 3 columns
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 12
+    padding: 4,
+    marginVertical: 12
   },
   icon: {
     fontSize: 24,
   },
   value: {
     ...textStyle.bold,
-    fontSize: 20,
+    fontSize: 18,
     color: '#3c3c3cff'
   },
   label: {
