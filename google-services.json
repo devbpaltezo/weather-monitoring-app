@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "494713860331",
+    "project_id": "coastal-weather-monitoring",
+    "storage_bucket": "coastal-weather-monitoring.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:494713860331:android:758507fecad14886568eae",
+        "android_client_info": {
+          "package_name": "com.weather.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCtvOEhn5eQSpNbh9YXzyIQYQMDG2ZP8fo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

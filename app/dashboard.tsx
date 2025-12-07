@@ -1,15 +1,52 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native'
 import LinearGradient from 'react-native-linear-gradient';
-import { getDatabase, ref, onValue } from 'firebase/database';
-import { app } from './firebase/config';
+import { collection, query, orderBy, limit, onSnapshot } from "firebase/firestore";
+import { db } from './firebase/config';
 
 interface WeatherData {
   humidity?: number;
   pressure?: number;
   rain?: string;
+  pressure_hpa?: string;
+  altitude_meters?: string;
+  battery_voltage?: string;
+  heat_index: string;
+  rain_adc: number;
+  rain_status: string;
+  rain_voltage: string;
+  temperature_celsius: string;
+  temperature_fahrenheit: string;
   temperature?: number;
   wind?: number;
+  wind_speed_kmh: number;
+  wind_speed_mph: number;
+  wind_speed_ms: number;
+  condition: string;
+  timestamp: {
+    seconds: number;
+  };
+}
+
+const RenderForecast = ({ Value, status }: { Value?: string | number; status: string }) => {
+
+  let icon = <Text style={{ fontSize: 35, paddingBottom: 20 }}>🌤️</Text>
+
+  if(status == "moderate") {
+    icon = <Text style={{ fontSize: 35, paddingBottom: 20 }}>🌦️</Text>
+  }else if(status == "heavy"){
+    icon = <Text style={{ fontSize: 35, paddingBottom: 20 }}>🌧️☔</Text>
+  }
+
+  return (
+    <View style={{ marginTop: 20, marginBottom: 20 }}>
+      <Text style={styles.temp}>{Value ?? '--'}°</Text>
+      <Text style={gridStyles.label}>Temperature</Text>
+      <View style={{ height: 15 }}></View>
+      <Text style={styles.condition}> {icon} {status ?? 'Loading...'}</Text>
+      <Text style={gridStyles.label}>Rain Forecast</Text>
+    </View>
+  )
 }
 
 export default function DashboardScreen() {
@@ -19,18 +56,26 @@ export default function DashboardScreen() {
   const timestamp = new Date().toLocaleString();
 
   useEffect(() => {
-    const db = getDatabase(app);
-    const weatherRef = ref(db, 'weather_data');
+    // Firestore query: get latest weather record
+    const q = query(
+      collection(db, "weather_data"),
+      orderBy("timestamp", "desc"),
+      limit(1)
+    );
 
-    const unsubscribe = onValue(weatherRef, (snapshot) => {
-      console.log(snapshot);
-      const data = snapshot.val();
-      const keys = Object.keys(data);
-      const latestKey = keys[keys.length - 1];  // last pushed item
-      setWeather(data[latestKey]);
+    // Realtime listener
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        setWeather(snapshot.docs[0].data() as WeatherData);
+        console.log(snapshot.docs[0].data());
+        console.log('Timestamp:', weather?.timestamp);
+      } else {
+        console.log("No weather records found");
+      }
       setLoading(false);
     });
 
+    // Cleanup listener on unmount
     return () => unsubscribe();
   }, []);
 
@@ -43,78 +88,172 @@ export default function DashboardScreen() {
   }
 
   return (
-    <LinearGradient colors={['#6dd5fa', '#2980b9']} style={styles.container}>
-      <Text style={styles.title}>🌤️ Weather Dashboard</Text>
-      <Text style={styles.timestamp}>{timestamp}</Text>
+    <LinearGradient colors={['#eef2ff', '#ffffff']} style={styles.container}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <Text style={styles.header}>Sual NHS</Text>
+        <Text style={styles.date}>
+          Data Source: {weather?.timestamp
+            ? new Date(weather.timestamp.seconds * 1000).toLocaleString('en-US', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true,
+            })
+            : ''}
+        </Text>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>🌧️ Humidity</Text>
-        <Text style={styles.value}>{weather?.humidity ?? '--'}%</Text>
-      </View>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>📉 Pressure</Text>
-        <Text style={styles.value}>{weather?.pressure ?? '--'} hPa</Text>
-      </View>
+        <View style={styles.mainCard}>
+          <Text style={styles.city}>Weather Monitoring</Text>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>🌦️ Rain</Text>
-        <Text style={styles.value}>{weather?.rain ?? '--'}</Text>
-      </View>
+          <RenderForecast
+            Value={weather?.temperature_celsius ?? ''}
+            status={weather?.rain_status ?? ''}
+          />
 
-      <View style={styles.card}>
-        <Text style={styles.label}>🌡️ Temperature</Text>
-        <Text style={styles.value}>{weather?.temperature ?? '--'}°C</Text>
-      </View>
+          <View style={gridStyles.container}>
+            <View style={[gridStyles.cell, { backgroundColor: '#fff' }]}>
+              <Text style={gridStyles.icon}>🌡️</Text>
+              <Text style={gridStyles.value}>{weather?.heat_index ?? '--'}°</Text>
+              <Text style={gridStyles.label}>Heat Index</Text>
+            </View>
+            <View style={[gridStyles.cell, { backgroundColor: '#fff' }]}>
+              <Text style={gridStyles.icon}>🧭</Text>
+              <Text style={gridStyles.value}>{weather?.pressure_hpa ?? '--'}</Text>
+              <Text style={gridStyles.label}>Pressure</Text>
+            </View>
+            <View style={[gridStyles.cell, { backgroundColor: '#fff' }]}>
+              <Text style={gridStyles.icon}>🏔️</Text>
+              <Text style={gridStyles.value}>{weather?.altitude_meters ?? '--'} m</Text>
+              <Text style={gridStyles.label}>Altitude</Text>
+            </View>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>💨 Wind</Text>
-        <Text style={styles.value}>{weather?.wind ?? '--'} km/h</Text>
-      </View>
+            <View style={[gridStyles.cell, { backgroundColor: '#fff' }]}>
+              <Text style={gridStyles.icon}>💧</Text>
+              <Text style={gridStyles.value}>{weather?.humidity ?? '--'}%</Text>
+              <Text style={gridStyles.label}>Humidity</Text>
+            </View>
+            <View style={[gridStyles.cell, { backgroundColor: '#fff' }]}>
+              <Text style={gridStyles.icon}>💨</Text>
+              <Text style={gridStyles.value}>{weather?.wind_speed_kmh ?? '--'} km/h</Text>
+              <Text style={gridStyles.label}>Wind</Text>
+            </View>
+            <View style={[gridStyles.cell, { backgroundColor: '#fff' }]}>
+              <Text style={gridStyles.icon}>🌧️</Text>
+              <Text style={gridStyles.value}>{weather?.rain_voltage ?? '--'}%</Text>
+              <Text style={gridStyles.label}>Rain</Text>
+            </View>
+          </View>
+
+        </View>
+
+      </ScrollView>
     </LinearGradient>
   );
+
 }
+
+const textStyle = StyleSheet.create({
+  regular: {
+    fontFamily: 'Poppins-Regular',
+    fontWeight: 'normal'
+  },
+  bold: {
+    fontFamily: 'Poppins-Regular',
+    fontWeight: 'bold'
+  }
+})
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    justifyContent: 'flex-start',
+    padding: 20
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    color: '#ffffff',
-    marginBottom: 5,
-    marginTop: 20,
+  header: {
+    ...textStyle.bold,
+    fontSize: 26,
+    paddingTop: 20,
+    color: '#555'
   },
-  timestamp: {
-    fontSize: 14,
-    color: '#f0f0f0',
-    textAlign: 'center',
-    marginBottom: 20,
+  date: {
+    ...textStyle.regular,
+    color: '#777',
+    marginBottom: 20
   },
-  card: {
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    padding: 20,
-    borderRadius: 20,
-    marginBottom: 15,
+  mainCard: {
+    backgroundColor: '#fff',
+    borderRadius: 26,
+    padding: 25,
+    alignItems: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 6,
-    elevation: 5,
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
   },
-  label: {
+  city: {
+    ...textStyle.regular,
+    fontSize: 20,
+    color: '#444'
+  },
+  temp: {
+    ...textStyle.regular,
+    fontSize: 40,
+    fontWeight: 'bold',
+    color: '#0d006bff'
+  },
+  condition: {
+    ...textStyle.regular,
     fontSize: 18,
-    color: '#444',
-    fontWeight: '600',
+    color: '#666'
+  },
+  weatherIcon: {
+    ...textStyle.regular,
+    width: 120,
+    height: 120,
+    marginVertical: 10
+  },
+  statsRow: {
+    flex: 1,
+    flexDirection: 'row',
+    marginTop: 10
+  },
+  statBox: {
+    flex: 1,
+  },
+  statIcon: {
+    fontSize: 30
+  },
+  statText: {
+    ...textStyle.regular,
+    fontSize: 22,
+    fontWeight: '600'
+  }
+});
+
+const gridStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    margin: 12,
+  },
+  cell: {
+    width: '33.33%', // 3 columns
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12
+  },
+  icon: {
+    fontSize: 24,
   },
   value: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    marginTop: 5,
-    color: '#222',
+    ...textStyle.bold,
+    fontSize: 20,
+    color: '#3c3c3cff'
   },
-});
+  label: {
+    ...textStyle.regular,
+    fontSize: 13,
+    color: '#555',
+  }
+})
